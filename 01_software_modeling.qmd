@@ -1,0 +1,7 @@
+---
+title: "Sotfware for modeling"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
