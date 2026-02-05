@@ -5,3 +5,43 @@ editor: visual
 editor_options: 
   chunk_output_type: console
 ---
+
+# 1 Fundamentals for modeling software
+
+# 2 Types of models
+
+-   Descriptive models
+
+-   Inferential models
+
+-   Predictive models
+
+# 3 Connections between types of models
+
+# 4 Some terminology
+
+-   Unsupervised models learn patterns, clusters, clusters, or other characteristics of the data but lack an outcome, i.e. a dependent variable (PCA, clustering, auto-encoders)
+
+-   Supervised models have an outcome variable (linear regression, neural networks). Two main sub-categories:
+
+    -   Regression predicts a numeric outcome
+
+    -   Classification predicts an outcome that is an ordered or unordered set of qualitative values
+
+# 5 How does modeling fit into the data analysis process?
+
+-   clean the data
+
+-   understand the data
+
+-   expectations of the model's goal and how performance (and success) will be judged
+
+General phases:
+
+-   Exploratory Data Analysis
+
+-   Feature engineering
+
+-   Model tuning and selection
+
+-   Model evaluation

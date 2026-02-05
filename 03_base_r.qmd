@@ -1,0 +1,171 @@
+---
+title: "A review of R modeling fundamentals"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 An example
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+data(crickets, package = "modeldata")
+names(crickets)
+```
+
+```{r}
+# Plot the temperature on the x-axis, the chirp rate on the y-axis.
+# The plot elements will be colored differently for each species:
+ggplot(crickets,
+       aes(x = temp, y = rate, 
+           color = species, pch = species, lty = species)) +
+  # Plot points for each data point and color by species
+  geom_point(size = 2) +
+  # Show a simple linear model fit created separately for each species:
+  geom_smooth(method = lm, se = FALSE, alpha = 0.5) +
+  scale_color_brewer(palette = "Paired") +
+  labs(x = "Temperature (C)", y = "Chirp Rate (per minute)")
+```
+
+```{r}
+interaction_fit <- lm(rate ~ (temp + species)^2, data = crickets)
+interaction_fit
+```
+
+Diagnostic plots to assess the fit:
+
+```{r}
+# Place two plots next to one another:
+par(mfrow = c(1, 2))
+
+# Show residuals vs predicted values:
+plot(interaction_fit, which = 1)
+
+# A normal quantile plot on the residuals:
+plot(interaction_fit, which = 2)
+```
+
+Recompute the model without the interaction term and use the `anova()` method:
+
+```{r}
+# Fit a reduced model:
+main_effect_fit <- lm(rate ~ temp + species, data = crickets)
+
+# Compare the two:
+anova(main_effect_fit, interaction_fit)
+```
+
+There is a lack of evidence against the null hypothesis that the interaction term is not needed by the model.
+
+Inspect the coefficients, standard errors, and p-values of each model term:
+
+```{r}
+summary(main_effect_fit)
+```
+
+Estimate the chirp rate at a temperature that was not observed in the experiment:
+
+```{r}
+new_values <- data.frame(species = "O. exclamationis", temp = 15:20)
+predict(main_effect_fit, new_values)
+```
+
+# 2 What does the R formula do?
+
+# 3 Why tidiness is important for modeling
+
+```{r}
+# Add a missing value to the prediction set
+new_values$temp[1] <- NA
+```
+
+```{r}
+# The predict method for `lm` defaults to `na.pass`:
+predict(main_effect_fit, new_values)
+```
+
+```{r}
+#| error: true
+# Alternatively 
+predict(main_effect_fit, new_values, na.action = na.fail)
+```
+
+```{r}
+predict(main_effect_fit, new_values, na.action = na.omit)
+```
+
+```{r}
+corr_res <- map(mtcars %>% select(-mpg), cor.test, y = mtcars$mpg)
+```
+
+```{r}
+# The first of ten results in the vector: 
+corr_res[[1]]
+```
+
+```{r}
+library(broom)
+```
+
+```{r}
+tidy(corr_res[[1]])
+```
+
+The results can be "stacked" and added to a ggplot:
+
+```{r}
+corr_res |> 
+  # Convert each to a tidy format: `map_dfr()` stacks the data frames
+  map_dfr(tidy, .id = "predictor") |> 
+  ggplot(aes(x = fct_reorder(predictor, estimate))) +
+  geom_point(aes(y = estimate)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = .1) +
+  labs(x = NULL, y = "Correlation with mpg")
+```
+
+# 4 Combining base R models and the tidyverse
+
+If we wanted to fit separate models for each cricket species, we can first break out the cricket data by this column:
+
+```{r}
+split_by_species <- 
+  crickets |> 
+  group_nest(species)
+split_by_species
+```
+
+From this, the `purrr::map()` function can create individual models for each species:
+
+```{r}
+model_by_species <- 
+  split_by_species |> 
+  mutate(model = map(data, ~ lm(rate ~ temp, data = .x)))
+model_by_species
+```
+
+To collect the coefficients for each of these models, we use `broom::tidy()`:
+
+```{r}
+model_by_species |> 
+  mutate(coef = map(model, tidy)) |> 
+  select(species, coef) |> 
+  unnest(cols = c(coef))
+```
+
+# 5 The tidymodels metapackage
+
+```{r}
+library(conflicted)
+```
+
+```{r}
+conflict_prefer("filter", winner = "dplyr")
+```
+
+```{r}
+tidymodels::tidymodels_prefer(quiet = FALSE)
+```

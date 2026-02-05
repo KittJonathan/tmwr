@@ -1,0 +1,70 @@
+---
+title: "The Ames Housing Data"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+data(ames, package = "modeldata")
+dim(ames)
+```
+
+# 1 Exploring features of homes in Ames
+
+```{r}
+library(tidymodels)
+tidymodels_prefer()
+```
+
+```{r}
+ggplot(ames, aes(x = Sale_Price)) +
+  geom_histogram(bins = 50, col = "white")
+```
+
+Log-transformation:
+
+-   no houses will be predicted with negative ale prices
+
+-   errors in predicting expensive houses will not have an undue influence on the model
+
+-   from a statistical point of view, a logarithmic transform may also stabilize the variance in a way that makes inference more legitimate
+
+```{r}
+ggplot(ames, aes(x = Sale_Price)) +
+  geom_histogram(bins = 50, col = "white") +
+  scale_x_log10()
+```
+
+The units of the model coefficients might be more difficult to interpret, as will measures of performance (e.g. the residuals will also be on the log scale)
+
+```{r}
+ames <- ames |> 
+  mutate(Sale_Price = log10(Sale_Price))
+```
+
+Spatial inormation:
+
+```{r}
+ggplot(ames, aes(x = Longitude, y = Latitude,
+                 col = Neighborhood)) +
+  geom_point() +
+  theme(legend.position = "bottom")
+```
+
+Some basic questions that could be examined during this exploratory stage include:
+
+-   is there anything odd or noticeable about the distributions of the individual predictors? Is there much skewness or any pathological distributions?
+
+-   are there high correlations between predictors? For example, there are multiple predictors related to house size. Are some redundant?
+
+-   are there associations between predictors and the outcomes?
+
+# 2 Chapter summary
+
+```{r}
+library(tidymodels)
+data(ames)
+ames <- ames |> mutate(Sale_Price = log10(Sale_Price))
+```

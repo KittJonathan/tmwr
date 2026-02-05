@@ -1,0 +1,160 @@
+---
+title: "A Tidyverse primer"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Tidyverse principles
+
+## 1.1 Design for humans
+
+Sort the `mtcars` data by two of its columns:
+
+```{r}
+mtcars[order(mtcars$gear, mtcars$mpg), ]
+```
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+arrange(.data = mtcars, gear, mpg)
+```
+
+## 1.2 Reuse existing data structures
+
+```{r}
+boot_samp <- rsample::bootstraps(mtcars, times = 3)
+boot_samp
+```
+
+## 1.3 Design for the pipe and functional programming
+
+```{r}
+small_mtcars <- arrange(mtcars, gear)
+small_mtcars <- slice(small_mtcars, 1:10)
+
+# or more compactly:
+small_mtcars <- slice(arrange(mtcars, gear), 1:10)
+```
+
+```{r}
+small_mtcars <- 
+  mtcars |> 
+  arrange(gear) |> 
+  slice(1:10)
+```
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  geom_smooth(method = lm)
+```
+
+Logarithm of the ratio of the fuel efficiency to the car weight:
+
+```{r}
+n <- nrow(mtcars)
+ratios <- rep(NA_real_, n)
+for (car in 1:n) {
+  ratios[car] <- log(mtcars$mpg[car] / mtcars$wt[car])
+}
+head(ratios)
+```
+
+Vectorized version:
+
+```{r}
+ratios <- log(mtcars$mpg / mtcars$wt)
+```
+
+```{r}
+compute_log_ratio <- function(mpg, wt, log_base = exp(1)) {
+  log(mpg/wt, base = log_base)
+}
+```
+
+`{purrr}` package:
+
+```{r}
+library(purrr)
+```
+
+```{r}
+map(head(mtcars$mpg, 3), sqrt)
+```
+
+```{r}
+map_dbl(head(mtcars$mpg, 3), sqrt)
+```
+
+```{r}
+log_ratios <- map2_dbl(mtcars$mpg, mtcars$wt, compute_log_ratio)
+head(log_ratios)
+```
+
+```{r}
+map2_dbl(mtcars$mpg, mtcars$wt, ~ log(.x/.y)) |> 
+  head()
+```
+
+# 2 Examples of Tidyverse syntax
+
+Tibbles naturally work with column names that are not syntactically valid variable names:
+
+```{r}
+# Wants valid names
+data.frame(`variable 1` = 1:2, two = 3:4)
+
+# But can be coerced to use them with an extra option
+df <- data.frame(`variable 1` = 1:2, two = 3:4, check.names = FALSE)
+df
+
+# But tibbles just work
+tbbl <- tibble(`variable 1` = 1:2, two = 3:4)
+tbbl
+```
+
+Standard data frames enable partial matching of arguments
+
+```{r}
+#| error: true
+df$tw
+tbbl$tw
+```
+
+Tibbles also prevent dropping dimensions
+
+```{r}
+df[, "two"]
+tbbl[, "two"]
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+url <- "https://data.cityofchicago.org/api/views/5neh-572f/rows.csv?accessType=DOWNLOAD&bom=true&format=true"
+```
+
+```{r}
+all_stations <- 
+  # Step 1: Read in the data
+  read_csv(url) |> 
+  # Step 2: filter columns and rename stationname
+  select(station = stationname, date, rides) |> 
+  # Step 3: convert the character date field to a date encoding
+  # Also, put the data in units of 1K rides
+  mutate(date = mdy(date), rides = rides / 1000) |> 
+  # Step 4: summarize the multiple records using the maximum
+  group_by(date, station) |> 
+  summarise(rides = max(rides), .groups = "drop")
+```
