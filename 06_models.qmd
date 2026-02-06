@@ -1,0 +1,188 @@
+---
+title: "Fitting models with parsnip"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Create a model
+
+1.  *Specify the type of model based on its mathematical structure* (e.g., linear regression, random forest, KNN, etc).
+2.  *Specify the engine for fitting the model*. Most often this reflects the software package that should be used, like Stan or `glmnet`. These are models in their own right, and `parsnip` provides consistent interfaces by using these as engines for modeling.
+3.  *When required, declare the mode of the model*. The mode reflects the type of prediction outcome. For numeric outcomes, the mode is regression; for qualitative outcomes, it is classification. If a model algorithm can only address one type of prediction outcome, such as linear regression, the mode is already set.
+
+```{r}
+library(tidymodels)
+tidymodels_prefer()
+```
+
+```{r}
+linear_reg() |> set_engine("lm")
+```
+
+```{r}
+linear_reg() |> set_engine("glmnet")
+```
+
+```{r}
+linear_reg() |> set_engine("stan")
+```
+
+Once the details of the model have been specified, the model estimation can be done with either the `fit()` function (to use a formula) or the `fit_wy()` function (when your data are already pre-processed).
+
+The `translate()` function can provide details on how `parsnip` converts the user's code to the package's syntax:
+
+```{r}
+linear_reg() |> set_engine("lm") |> translate()
+```
+
+```{r}
+linear_reg(penalty = 1) |> set_engine("glmnet") |> translate()
+```
+
+```{r}
+linear_reg() |> set_engine("stan") |> translate()
+```
+
+We want to predict the sale price of houses in the Ames data as a function of only longitude and latitude:
+
+```{r}
+lm_model <- 
+  linear_reg() |> 
+  set_engine("lm")
+
+lm_form_fit <- 
+  lm_model |> 
+  # Recall that Sale_Price has been pre-logged
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+lm_xy_fit <- 
+  lm_model |> 
+  fit_xy(
+    x = ames_train |> select(Longitude, Latitude),
+    y = ames_train |> pull(Sale_Price)
+  )
+```
+
+```{r}
+lm_form_fit
+```
+
+```{r}
+lm_xy_fit
+```
+
+```{r}
+rand_forest(trees = 1000, min_n = 5) |> 
+  set_engine("ranger") |> 
+  set_mode("regression") |> 
+  translate()
+```
+
+```{r}
+rand_forest(trees = 1000, min_n = 5) |> 
+  set_engine("ranger", verbose = TRUE) |> 
+  set_mode("regression")
+```
+
+# 2 Use the models results
+
+Extract the fitted model:
+
+```{r}
+lm_form_fit |> extract_fit_engine()
+```
+
+Normal methods can be applied to this object, such as printing and plotting:
+
+```{r}
+# Calculate variance-covariance
+lm_form_fit |> extract_fit_engine() |> vcov()
+```
+
+Print the results of the model fit, including a table with parameter values, their uncertainty estimates, and p-values:
+
+```{r}
+model_res <- 
+  lm_form_fit |> 
+  extract_fit_engine() |> 
+  summary()
+
+# The model coefficient table is accessible via the 'coef' method
+param_est <- coef(model_res)
+class(param_est)
+param_est
+```
+
+The `broom` package can convert many types of model objects to a tidy structure:
+
+```{r}
+tidy(lm_form_fit)
+```
+
+# 3 Make predictions
+
+For predictions, `parsnip` always conforms to the following rules:
+
+1.  The results are always a tibble
+2.  The column names of the tibble are always predictable
+3.  There are always as many rows in the tibble as there are in the input data set
+
+```{r}
+ames_test_small <- ames_test |> slice(1:5)
+predict(lm_form_fit, new_data = ames_test_small)
+```
+
+These rules make it easier to merge predictions with the original data:
+
+```{r}
+ames_test_small |>  
+  select(Sale_Price) |> 
+  bind_cols(predict(lm_form_fit, ames_test_small)) |> 
+  # Add 95% prediction intervals to the results:
+  bind_cols(predict(lm_form_fit, ames_test_small, type = "pred_int")) 
+```
+
+```{r}
+tree_model <- 
+  decision_tree(min_n = 2) |> 
+  set_engine("rpart") |> 
+  set_mode("regression")
+
+tree_fit <- 
+  tree_model |> 
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+ames_test_small |> 
+  select(Sale_Price) |> 
+  bind_cols(predict(tree_fit, ames_test_small))
+```
+
+# 4 Parsnip-extension packages
+
+The `discrim` package has model definitions for the set of classification techniques called discriminant analysis methods (such as linear or quadratic discriminant analysis).
+
+# 5 Creating model specifications
+
+List of possible models for each model mode.
+
+```{r}
+parsnip_addin()
+```
+
+# 6 Chapter summary
+
+```{r}
+library(tidymodels)
+
+data(ames)
+ames <- mutate(ames, Sale_Price = log10(Sale_Price))
+
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.80, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+
+lm_model <- linear_reg() |> set_engine("lm")
+```

@@ -1,0 +1,95 @@
+---
+title: "Spending our data"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Common methods for splitting data
+
+-   The training set is used to develop and optimize the model
+
+-   The test set is held in reserve until one or two models are chosen, and is then used as the final arbiter to determine the efficacy of the model
+
+```{r}
+library(tidymodels)
+tidymodels_prefer()
+
+data(ames)
+ames <- ames |> mutate(Sale_Price = log10(Sale_Price))
+```
+
+```{r}
+# Set the random number stream using `set.seed()` so that the results
+# can be reproduced later
+set.seed(501)
+
+# Save the split information for an 80/20 split of the data
+ames_split <- initial_split(ames, prop = 0.80)
+ames_split
+```
+
+```{r}
+ames_train <- training(ames_split)
+ames_test <- testing(ames_split)
+
+dim(ames_train)
+```
+
+When there is a dramatic class imbalance, one class occurs much less frequently than another. To avoid this, stratified sampling can be used:
+
+```{r}
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.8, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test <- testing(ames_split)
+dim(ames_train)
+```
+
+When the data have a significant time component, such as time series data, it is more common to use the most recent data as the test set (`initial_time_split()`).
+
+# 2 What about a validation set?
+
+During the early days of neural networks, researchers realized that measuring performance by re-predicting the training set samples led to results that were overly optimistic. This led to models that overfit, meaning that they performed very well on the training set but poorly on the test set. To combat this issue, a small validation set of data were held back and used to measure performance as the network was trained. Once the validation set error began to rise, the training would be halted. In other words, the validation set was a means to get a rough sense of how well the model performed prior to the test set.
+
+```{r}
+set.seed(52)
+# To put 60% into training, 20% in validation, and 20% in testing:
+ames_val_split <- initial_validation_split(ames, prop = c(0.6, 0.2))
+ames_val_split
+```
+
+```{r}
+ames_train <- training(ames_val_split)
+ames_test <- testing(ames_val_split)
+ames_val <- validation(ames_val_split)
+```
+
+# 3 Multilevel data
+
+The data set will have multiple rows per experimental unit. Data splitting should occur at the independent experimental unit level of the data.
+
+# 4 Other considerations for a data budget
+
+-   It is critical to quarantine the test set from any model building activities
+
+-   Techniques to subsample the training set can mitigate specific issues (e.g. class imbalances). The test set should always resemble new data that will be given to the model
+
+-   Some data-driven methodologies for data usage will reduce the risks related to bias, overfitting, and other issues.
+
+-   When training a final chosen model for production, after ascertaining the expected performance on new data, practitioners often use all available data for better parameter estimation
+
+# 5 Chapter summary
+
+```{r}
+library(tidymodels)
+
+data(ames)
+ames <- ames %>% mutate(Sale_Price = log10(Sale_Price))
+
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.80, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+```
