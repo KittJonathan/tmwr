@@ -5,3 +5,151 @@ editor: visual
 editor_options: 
   chunk_output_type: console
 ---
+
+-   Using a workflow concept encourages good methodology since it is a single point of entry to the estimation components of a data analysis
+
+-   It enables the user to better organize projects
+
+# 1 Where does the model begin and end?
+
+Linear regression produces a model equation of
+
+$$
+\hat{y_i}=\hat{\beta_0}+\hat{\beta_1}x_{i1}+...+\hat{\beta_p}x_{ip}
+$$
+
+While this is a linear model, it is linear only in the parameters. The predictors could be nonlinear terms (e.g. $log(x_i)$).
+
+A variety of choices and additional steps often occur before the model is fit:
+
+-   exclusion of some of the predictors from the analysis
+
+-   imputation of an important missing predictor
+
+-   transformation of the scale of a predictor
+
+There may also be operations that occur after the model is created (e.g. cutoff threshold for a classification model).
+
+# 2 Workflow basics
+
+```{r}
+library(tidymodels)
+tidymodels_prefer()
+```
+
+```{r}
+lm_model <- 
+  linear_reg() |> 
+  set_engine("lm")
+```
+
+A workflow always requires a `parsnip` model object:
+
+```{r}
+lm_wflow <- 
+  workflow() |> 
+  add_model(lm_model)
+
+lm_wflow
+```
+
+A standard R formula can be used as a preprocessor:
+
+```{r}
+lm_wflow <- 
+  lm_wflow |> 
+  add_formula(Sale_Price ~ Longitude + Latitude)
+
+lm_wflow
+```
+
+Workflows have a `fit()` method that can be used to create the model.
+
+```{r}
+lm_fit <- fit(lm_wflow, ames_train)
+lm_fit
+```
+
+We can also `predict()` on the fitted workflow:
+
+```{r}
+predict(lm_fit, ames_test |> slice(1:3))
+```
+
+Both the model and preprocessor can be removed or updated:
+
+```{r}
+lm_fit |> update_formula(Sale_Price ~ Longitude)
+```
+
+# 3 Adding raw variables to the `workflow()`
+
+```{r}
+lm_wflow <- 
+  lm_wflow |> 
+  remove_formula() |> 
+  add_variables(outcome = Sale_Price, predictors = c(Longitude, Latitude))
+lm_wflow
+```
+
+```{r}
+fit(lm_wflow, ames_train)
+```
+
+# 4 How does a `workflow()` use the formula?
+
+## 4.1 Special formulas and inline functions
+
+```{r}
+library(lme4)
+lmer(distance ~ Sex + (age | Subject), data = nlme::Orthodont)
+```
+
+Standard R methods can't properly process this formula:
+
+```{r}
+model.matrix(distance ~ Sex + (age | Subject), data = nlme::Orthodont)
+```
+
+The special formula has to be processed by the underlying package code, not the standard `model.matrix()` approach.
+
+```{r}
+library(multilevelmod)
+```
+
+```{r}
+multilevel_spec <- linear_reg() |> set_engine("lmer")
+
+multilevel_workflow <- 
+  workflow() |> 
+  # pass the data along as-is:
+  add_variables(outcome = distance, predictors = c(Sex, age, Subject)) |> 
+  add_model(multilevel_spec,
+            # This formula is given to the model
+            formula = distance ~ Sex + (age | Subject))
+
+multilevel_fit <- fit(multilevel_workflow, data = nlme::Orthodont)
+
+multilevel_fit
+```
+
+We can use the previously `strata()` function from the `survival` package for survival analysis:
+
+```{r}
+library(censored)
+```
+
+```{r}
+parametric_spec <- survival_reg()
+
+parametric_workflow <- 
+  workflow() |> 
+  add_variables(outcome = c(fustat, futime), predictors = c(age, rx)) |> 
+  add_model(parametric_spec,
+            formula = Surv(futime, fustat) ~ age + strata(rx))
+
+parametric_fit <- fit(parametric_workflow, data = ovarian)
+parametric_fit
+```
+
+# 5 Creating multiple workflows at once
