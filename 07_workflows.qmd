@@ -153,3 +153,97 @@ parametric_fit
 ```
 
 # 5 Creating multiple workflows at once
+
+-   For predictive models, it is advisable to evaluate a variety of different model types. This requires the user to create multiple model specifications.
+
+-   Sequential testing of models typically starts with an expanded set of predictors. This "full model" is compared to a sequence of the same model that removes each predictor in turn. Using basic hypothesis testing methods or empirical validation, the effect of each predictor can be isolated and assessed.
+
+The `workflowset` package creates combinations of workflow components. A list of preprocessors can be combined with a list of model specifications, resulting in a set of workflows.
+
+We want to focus on the different ways that house location is represented in the Ames data. We can create a series of formulas that capture these predictors:
+
+```{r}
+location <- list(
+  longitude = Sale_Price ~ Longitude,
+  latitude = Sale_Price ~ Latitude,
+  coords = Sale_Price ~ Longitude + Latitude,
+  neighborhood = Sale_Price ~ Neighborhood
+)
+```
+
+These representations can be crossed with one or more models using the `workflow_set()` function:
+
+```{r}
+library(workflowsets)
+```
+
+```{r}
+location_models <- workflow_set(preproc = location, models = list(lm = lm_model))
+location_models
+```
+
+```{r}
+location_models$info[[1]]
+```
+
+```{r}
+extract_workflow(location_models, id = "coords_lm")
+```
+
+Let's create model fits for each formula and save them in a new column named `fit`.
+
+```{r}
+location_models <- 
+  location_models |> 
+  mutate(fit = map(info, ~ fit(.x$workflow[[1]], ames_train)))
+location_models
+```
+
+```{r}
+location_models$fit[[1]]
+```
+
+# 6 Evaluating the test set
+
+We've concluded our model development and have settled on a final model. There is a convenience function called `lasst_fit()` that will *fit* the model to the entire training set and *evaluate* it with the testing set.
+
+```{r}
+final_lm_res <- last_fit(lm_wflow, ames_split)
+final_lm_res
+```
+
+```{r}
+fitted_lm_wflow <- extract_workflow(final_lm_res)
+fitted_lm_wflow
+```
+
+```{r}
+collect_metrics(final_lm_res)
+```
+
+```{r}
+collect_predictions(final_lm_res) |> slice(1:5)
+```
+
+# 7 Chapter summary
+
+```{r}
+library(tidymodels)
+data(ames)
+
+ames <- mutate(ames, Sale_Price = log10(Sale_Price))
+
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.80, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+
+lm_model <- linear_reg() |> set_engine("lm")
+
+lm_wflow <- 
+  workflow() |> 
+  add_model(lm_model) |> 
+  add_variables(outcome = Sale_Price, predictors = c(Longitude, Latitude))
+
+lm_fit <- fit(lm_wflow, ames_train)
+```
