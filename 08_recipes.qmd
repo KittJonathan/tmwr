@@ -5,3 +5,117 @@ editor: visual
 editor_options: 
   chunk_output_type: console
 ---
+
+# 8.1 A simple `recipe()` for the Ames housing data
+
+```{r}
+lm(Sale_Price ~ Neighborhood + log10(Gr_Liv_Area) + Year_Built + Bldg_Type, data = ames)
+```
+
+```{r}
+library(tidymodels)
+tidymodels_prefer()
+```
+
+```{r}
+simple_ames <- 
+  recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type,
+         data = ames_train) |> 
+  step_log(Gr_Liv_Area, base = 10) |> 
+  step_dummy(all_nominal_predictors())
+
+simple_ames
+```
+
+# 8.2 Using recipes
+
+```{r}
+#| error: true
+lm_wflow |> 
+  add_recipe(simple_ames)
+```
+
+```{r}
+lm_wflow <- 
+  lm_wflow |> 
+  remove_variables() |> 
+  add_recipe(simple_ames)
+
+lm_wflow
+```
+
+```{r}
+lm_fit <- fit(lm_wflow, ames_train)
+```
+
+```{r}
+predict(lm_fit, ames_test |> slice(1:3))
+```
+
+```{r}
+# Get the recipe after it has been estimated:
+lm_fit |> 
+  extract_recipe(estimated = TRUE)
+```
+
+```{r}
+# To tidy the model fit:
+lm_fit |> 
+  # This returns the parsnip object:
+  extract_fit_parsnip() |> 
+  # Now tidy the linear model object:
+  tidy() |> 
+  slice(1:5)
+```
+
+# 8.3 How data are used by the `recipe()`
+
+# 8.4 Examples of recipe steps
+
+## 8.4.1 Encoding qualitative data in a numeric format
+
+```{r}
+ggplot(ames_train) +
+  geom_bar(aes(y = Neighborhood))
+```
+
+To lump the bottom 1% of the neighborhoods into a new level called "other":
+
+```{r}
+simple_ames <- 
+  recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type,
+         data = ames_train) |> 
+  step_log(Gr_Liv_Area, base = 10) |> 
+  step_other(Neighborhood, threshold = 0.01) |> 
+  step_dummy(all_nominal_predictors())
+```
+
+```{r}
+simple_ames
+```
+
+## 8.4.2 Interaction terms
+
+```{r}
+ggplot(ames_train, aes(x = Gr_Liv_Area, y = 10^Sale_Price)) + 
+  geom_point(alpha = .2) + 
+  facet_wrap(~ Bldg_Type) + 
+  geom_smooth(method = lm, formula = y ~ x, se = FALSE, 
+              color = "lightblue") + 
+  scale_x_log10() + 
+  scale_y_log10() + 
+  labs(x = "Gross Living Area", y = "Sale Price (USD)")
+```
+
+```{r}
+simple_ames <- 
+  recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type,
+         data = ames_train) |> 
+  step_log(Gr_Liv_Area, base = 10) |> 
+  step_other(Neighborhood, threshold = 0.01) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  # Gr_Liv_Area is on the log scale from a previous step
+  step_interact(~ Gr_Liv_Area:starts_with("Bldg_Type_"))
+```
+
+## 8.4.3 Spline functions
