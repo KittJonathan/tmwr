@@ -1,0 +1,196 @@
+---
+title: "Judging Model Effectiveness"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 9.1 Performance metrics and inference
+
+# 9.2 Regression metrics
+
+```{r}
+ames_test_res <- predict(lm_fit, 
+                         new_data = ames_test |> select(-Sale_Price))
+```
+
+```{r}
+ames_test_res
+```
+
+```{r}
+ames_test_res <- bind_cols(ames_test_res, 
+                           ames_test |> select(Sale_Price))
+```
+
+```{r}
+ames_test_res
+```
+
+```{r}
+ggplot(ames_test_res, aes(x = Sale_Price, y = .pred)) +
+  # Create a diagonal line:
+  geom_abline(lty = 2) +
+  geom_point(alpha = 0.5) +
+  labs(y = "Predicted Sale Price (log10)",
+       x = "Sale Price (log10)") +
+  # Scale and size the x- and y-axis uniformly:
+  coord_obs_pred()
+```
+
+Compute the root mean squared error for this model:
+
+```{r}
+rmse(ames_test_res, truth = Sale_Price, estimate = .pred)
+```
+
+Add r squared and the mean absolute error:
+
+```{r}
+ames_metrics <- metric_set(rmse, rsq, mae)
+ames_metrics(ames_test_res, truth = Sale_Price, estimate = .pred)
+```
+
+# 9.3 Binary classification metrics
+
+```{r}
+data("two_class_example")
+tibble(two_class_example)
+```
+
+```{r}
+# A confusion matrix:
+conf_mat(two_class_example, truth = truth, estimate = predicted)
+```
+
+Accuracy: (TP + TN) / (TP + TN + FP + FN)
+
+```{r}
+(227 + 192) / (227 + 192 + 50 + 31)
+```
+
+```{r}
+# Accuracy:
+accuracy(two_class_example, truth, predicted)
+```
+
+Matthews correlation coefficient: \[(TP \* TN) - (FP \* FN)\] / sqrt\[(TP+FP)(TP+FN)(TN+FN)\]
+
+```{r}
+((227 * 192) - (31 * 50)) / sqrt((227 + 31) * (227 + 50) * (192 + 50))
+```
+
+```{r}
+# Matthews correlation coefficient:
+mcc(two_class_example, truth, predicted)
+```
+
+```{r}
+# F1 metric:
+f_meas(two_class_example, truth, predicted)
+```
+
+Combining these three classification metrics together:
+
+```{r}
+classification_metrics <- metric_set(accuracy, mcc, f_meas)
+classification_metrics(two_class_example, 
+                       truth = truth, estimate = predicted)
+```
+
+Choose the second level as the event:
+
+```{r}
+f_meas(two_class_example, truth, predicted, event_level = "second")
+```
+
+```{r}
+two_class_curve <- roc_curve(two_class_example, truth, Class1)
+two_class_curve
+```
+
+```{r}
+roc_auc(two_class_example, truth, Class1)
+```
+
+```{r}
+autoplot(two_class_curve)
+```
+
+# 9.4 Multiclass classification metrics
+
+```{r}
+data("hpc_cv")
+tibble(hpc_cv)
+```
+
+```{r}
+accuracy(hpc_cv, obs, pred)
+mcc(hpc_cv, obs, pred)
+```
+
+```{r}
+class_totals <- 
+  count(hpc_cv, obs, name = "totals") |> 
+  mutate(class_wts = totals / sum(totals))
+class_totals
+```
+
+```{r}
+cell_counts <- 
+  hpc_cv |> 
+  group_by(obs, pred) |> 
+  count() |> 
+  ungroup()
+```
+
+```{r}
+# Compute the four sensitivities using 1-vs-all
+one_versus_all <- 
+  cell_counts |> 
+  filter(obs == pred) |> 
+  full_join(class_totals, by = "obs") |> 
+  mutate(sens = n / totals)
+one_versus_all
+```
+
+```{r}
+# Three different estimates:
+one_versus_all |> 
+  summarise(
+    macro = mean(sens),
+    macro_wts = weighted.mean(sens, class_wts),
+    micro = sum(n) / sum(totals)
+  )
+```
+
+```{r}
+sensitivity(hpc_cv, obs, pred, estimator = "macro")
+sensitivity(hpc_cv, obs, pred, estimator = "macro_weighted")
+sensitivity(hpc_cv, obs, pred, estimator = "micro")
+```
+
+```{r}
+roc_auc(hpc_cv, obs, VF, F, M, L)
+```
+
+```{r}
+roc_auc(hpc_cv, obs, VF, F, M, L, estimator = "macro_weighted")
+```
+
+```{r}
+hpc_cv |> 
+  group_by(Resample) |> 
+  accuracy(obs, pred)
+```
+
+```{r}
+# Four 1-vs-all ROC curves for each fold
+hpc_cv |> 
+  group_by(Resample) |> 
+  roc_curve(obs, VF, F, M, L) |> 
+  autoplot()
+```
+
+# 9.5 Chapter summary
