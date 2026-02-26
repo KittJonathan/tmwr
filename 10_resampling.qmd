@@ -7,3 +7,68 @@ editor_options:
 ---
 
 # 10.1 The resubstitution approach
+
+We can fit a random forest model to the training set:
+
+```{r}
+rf_model <- 
+  rand_forest(trees = 1000) |> 
+  set_engine("ranger") |> 
+  set_mode("regression")
+
+rf_wflow <- 
+  workflow() |> 
+  add_formula(
+    Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type +
+      Latitude + Longitude) |> 
+  add_model(rf_model)
+
+rf_fit <- rf_wflow |> 
+  fit(data = ames_train)
+```
+
+How should we compare the linear and random forest models?
+
+We predict the training set to produce what is known as an *apparent metric* or *resubstitution metric*. This function creates predictions and formats the results:
+
+```{r}
+estimate_perf <- function(model, dat) {
+  # Capture the names of the `model` and `dat` objects
+  cl <- match.call()
+  obj_name <- as.character(cl$model)
+  data_name <- as.character(cl$dat)
+  data_name <- gsub("ames_", "", data_name)
+  
+  # Estimate these metrics:
+  reg_metrics <- metric_set(rmse, rsq)
+  
+  model |> 
+    predict(dat) |> 
+    bind_cols(dat |> select(Sale_Price)) |> 
+    reg_metrics(Sale_Price, .pred) |> 
+    select(-.estimator) |> 
+    mutate(object = obj_name, data = data_name)
+}
+```
+
+The resubstitution statistics are:
+
+```{r}
+estimate_perf(rf_fit, ames_train)
+```
+
+```{r}
+estimate_perf(lm_fit, ames_train)
+```
+
+Apply the random forest model to the test set for final verification:
+
+```{r}
+estimate_perf(rf_fit, ames_test)
+```
+
+The test set RMSE estimate, 0.0701, is much worse than the training set value of 0.0364!
+
+Many predictive models are capable of learning complex trends from the data. In statistics, these are commonly referred to as *low bias models*.
+
+# 10.2 Resampling methods
