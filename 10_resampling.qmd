@@ -1,0 +1,9 @@
+---
+title: "Resampling for evaluating performance"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# 10.1 The resubstitution approach
