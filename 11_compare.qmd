@@ -1,0 +1,7 @@
+---
+title: "Comparing models with resampling"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---

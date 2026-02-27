@@ -72,3 +72,301 @@ The test set RMSE estimate, 0.0701, is much worse than the training set value of
 Many predictive models are capable of learning complex trends from the data. In statistics, these are commonly referred to as *low bias models*.
 
 # 10.2 Resampling methods
+
+## 10.2.1 Cross-validation
+
+V-fold cross-validation: the data are randomly partitioned into V sets of roughly equal size (called the folds). For each iteration, one fold is held out for assessment statistics and the remaining folds are substrate for the model.
+
+Larger values of V result in resampling estimates with small bias but substantial variance.
+
+Smaller values of V have large bias but low variance.
+
+We prefer 10-fold since noise is reduced by replication, but bias is not.
+
+```{r}
+set.seed(1001)
+ames_folds <- vfold_cv(ames_train, v = 10)
+ames_folds
+```
+
+```{r}
+# For the first fold:
+ames_folds$splits[[1]] |> analysis() |> dim()
+ames_folds$splits[[1]] |> assessment() |> dim()
+```
+
+Repeated cross-validation:
+
+```{r}
+vfold_cv(ames_train, v = 10, repeats = 5)
+```
+
+Leave-one-out cross-validation
+
+```{r}
+loo_cv(ames_train)
+```
+
+Monte Carlo cross-validation:
+
+```{r}
+mc_cv(ames_train, prop = 9/10, times = 20)
+```
+
+## 10.2.2 Validation sets
+
+A single partition set aside to estimate performance separate from the test set.
+
+```{r}
+set.seed(52)
+
+# 60% into training, 20% in validation and 20% in testing:
+ames_val_split <- initial_validation_split(ames, prop = c(0.6, 0.2))
+ames_val_split
+```
+
+```{r}
+# Object used for resampling:
+val_set <- validation_set(ames_val_split)
+val_set
+```
+
+## 10.2.3 Bootstrapping
+
+A bootstrap sample of the training set is a sample that is the same size as the training set but is drawn with replacement.
+
+```{r}
+bootstraps(ames_train, times = 5)
+```
+
+## 10.2.4 Rolling forecasting origin resampling
+
+```{r}
+time_slices <- 
+  tibble(x = 1:365) |> 
+  rolling_origin(initial = 6 * 30, assess = 30, skip = 29,
+                 cumulative = FALSE)
+
+data_range <- function(x) {
+  summarise(x, first = min(x), last = max(x))
+}
+
+map_dfr(time_slices$splits, ~ analysis(.x) |> data_range())
+map_dfr(time_slices$splits, ~ assessment(.x) |> data_range())
+```
+
+# 10.3 Estimating performance
+
+```{r}
+keep_pred <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+
+set.seed(1003)
+
+rf_res <- 
+  rf_wflow |> 
+  fit_resamples(resamples = ames_folds, control = keep_pred)
+
+rf_res
+```
+
+```{r}
+collect_metrics(rf_res)
+```
+
+```{r}
+collect_metrics(rf_res, summarize = FALSE)
+```
+
+To obtain the assessment set predictions:
+
+```{r}
+assess_res <- collect_predictions(rf_res)
+assess_res
+```
+
+Compare observed and held-out predicted values:
+
+```{r}
+assess_res |> 
+  ggplot(aes(x = Sale_Price, y = .pred)) +
+  geom_point(alpha = 0.15) +
+  geom_abline(color = "red") +
+  coord_obs_pred() +
+  ylab("Predicted")
+  
+```
+
+Two houses are overpredicted:
+
+```{r}
+over_predicted <- 
+  assess_res |> 
+  mutate(residual = Sale_Price - .pred) |> 
+  arrange(desc(abs(residual))) |> 
+  slice(1:2)
+over_predicted
+```
+
+```{r}
+ames_train |> 
+  slice(over_predicted$.row) |> 
+  select(Gr_Liv_Area, Neighborhood, Year_Built, Bedroom_AbvGr, Full_Bath)
+```
+
+To use a validation set instead of cross-validation:
+
+```{r}
+val_res <- rf_wflow |> 
+  fit_resamples(resamples = val_set)
+
+val_res
+collect_metrics(val_res)
+```
+
+# 10.4 Parallel processing
+
+```{r}
+# The number of physical cores in the hardware:
+parallel::detectCores(logical = FALSE)
+```
+
+```{r}
+# The number of possible independent processes that can be 
+# simultaneously used:
+parallel::detectCores(logical = TRUE)
+```
+
+```{r}
+library(doParallel)
+```
+
+```{r}
+# Create a cluster object and then register:
+cl <- makePSOCKcluster(2)
+registerDoParallel()
+
+# Now run fit_resample()
+rf_res <- 
+  rf_wflow |> 
+  fit_resamples(resamples = ames_folds, control = keep_pred)
+
+stopCluster(cl)
+```
+
+# 10.5 Saving the resampled objects
+
+Fit a linear regression model using the recipe developed in chapter 8:
+
+```{r}
+ames_rec <- 
+  recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type + Latitude + Longitude, data = ames_train) |> 
+  step_other(Neighborhood, threshold = 0.01) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_interact(~ Gr_Liv_Area:starts_with("Bldg_Type_")) |> 
+  step_ns(Latitude, Longitude, deg_free = 20)
+```
+
+```{r}
+lm_wflow <- 
+  workflow() |> 
+  add_recipe(ames_rec) |> 
+  add_model(linear_reg() |> set_engine("lm"))
+```
+
+```{r}
+lm_fit <- lm_wflow |> fit(data = ames_train)
+```
+
+```{r}
+# Select the recipe:
+extract_recipe(lm_fit, estimated = TRUE)
+```
+
+Save the linear model coefficients for a fitted model from a workflow:
+
+```{r}
+get_model <- function(x) {
+  extract_fit_parsnip(x) |> tidy()
+}
+
+get_model(lm_fit)
+```
+
+Apply this function to the ten resampled fits.
+
+```{r}
+ctrl <- control_resamples(extract = get_model)
+
+lm_res <- lm_wflow |> 
+  fit_resamples(resamples = ames_folds, control = ctrl)
+
+lm_res
+```
+
+```{r}
+lm_res$.extracts[[1]]
+```
+
+```{r}
+lm_res$.extracts[[1]][[1]]
+```
+
+All of the results can be flattened and collected:
+
+```{r}
+all_coef <- map_dfr(lm_res$.extracts, ~ .x[[1]][[1]])
+
+# Show the replicated for a single predictor:
+filter(all_coef, term == "Year_Built")
+```
+
+# 10.6 Chapter summary
+
+```{r}
+library(tidymodels)
+data(ames)
+ames <- mutate(ames, Sale_Price = log10(Sale_Price))
+
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.80, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+
+ames_rec <- 
+  recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type + 
+           Latitude + Longitude, data = ames_train) %>%
+  step_log(Gr_Liv_Area, base = 10) %>% 
+  step_other(Neighborhood, threshold = 0.01) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_interact( ~ Gr_Liv_Area:starts_with("Bldg_Type_") ) %>% 
+  step_ns(Latitude, Longitude, deg_free = 20)
+
+lm_model <- linear_reg() %>% set_engine("lm")
+
+lm_wflow <- 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(ames_rec)
+
+lm_fit <- fit(lm_wflow, ames_train)
+
+rf_model <- 
+  rand_forest(trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("regression")
+
+rf_wflow <- 
+  workflow() %>% 
+  add_formula(
+    Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type + 
+      Latitude + Longitude) %>% 
+  add_model(rf_model) 
+
+set.seed(1001)
+ames_folds <- vfold_cv(ames_train, v = 10)
+
+keep_pred <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+
+set.seed(1003)
+rf_res <- rf_wflow %>% fit_resamples(resamples = ames_folds, control = keep_pred)
+```
