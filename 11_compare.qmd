@@ -110,3 +110,21 @@ rsq_wider |>
 ```
 
 # 11.3 Simple hypothesis testing methods
+
+```{r}
+compare_lm <- 
+  rsq_wider |> 
+  mutate(difference = splines_lm - basic_lm)
+
+lm(difference ~ 1, data = compare_lm) |> 
+  tidy(conf.int = TRUE) |> 
+  select(estimate, p.value, starts_with("conf"))
+
+# Alternatively, a paired t-test could also be used:
+rsq_wider |> 
+  with(t.test(splines_lm , basic_lm, paired = TRUE)) |> 
+  tidy() |> 
+  select(estimate, p.value, starts_with("conf"))
+```
+
+# 11.4 Bayesian methods
