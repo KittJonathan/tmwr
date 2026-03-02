@@ -69,3 +69,44 @@ autoplot(four_models, metric = "rsq") +
 ```
 
 # 11.2 Comparing resampled performance statistics
+
+We gather the individual resampling statistics for the linear models and the random forest.
+
+```{r}
+rsq_indiv_estimates <- 
+  collect_metrics(four_models, summarize = FALSE) |> 
+  filter(.metric == "rsq")
+```
+
+```{r}
+rsq_wider <- 
+  rsq_indiv_estimates |> 
+  select(wflow_id, .estimate, id) |> 
+  pivot_wider(id_cols = "id", names_from = "wflow_id", 
+              values_from = ".estimate")
+```
+
+```{r}
+corrr::correlate(rsq_wider |> select(-id), quiet = TRUE)
+```
+
+Across models, there are large within-resample correlations.
+
+```{r}
+rsq_indiv_estimates |> 
+  mutate(wflow_id = reorder(wflow_id, .estimate)) |> 
+  ggplot(aes(x = wflow_id, y = .estimate, group = id, color = id)) +
+  geom_line(alpha = 0.5, linewidth = 1.25) +
+  theme(legend.position = "none")
+```
+
+A statistical test for the correlations evaluates whether the magnitudes of these correlations are not simply noise:
+
+```{r}
+rsq_wider |> 
+  with(cor.test(basic_lm, splines_lm)) |> 
+  tidy() |> 
+  select(estimate, starts_with("conf"))
+```
+
+# 11.3 Simple hypothesis testing methods
