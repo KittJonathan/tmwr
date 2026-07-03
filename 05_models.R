@@ -91,3 +91,28 @@ tidy(lm_form_fit)
 
 # Make predictions ----
 
+ames_test_small <- ames_test |> slice(1:5)
+
+predict(lm_form_fit, new_data = ames_test_small)
+
+ames_test_small |> 
+  select(Sale_Price) |> 
+  bind_cols(predict(lm_form_fit, ames_test_small)) |> 
+  # Add 95% prediction intervals to the result:
+  bind_cols(predict(lm_form_fit, ames_test_small, type = "pred_int"))
+
+tree_model <- 
+  decision_tree(min_n = 2) |> 
+  set_engine("rpart") |> 
+  set_mode("regression")
+
+tree_fit <- 
+  tree_model |> 
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+ames_test_small |> 
+  select(Sale_Price) |> 
+  bind_cols(predict(tree_fit, ames_test_small))
+
+# Chapter summary ----
+
