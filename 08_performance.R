@@ -8,7 +8,7 @@ library(tidyverse)
 library(tidymodels)
 tidymodels_prefer()
 
-library(splines)
+# library(splines)
 
 # Load the data ----
 
@@ -38,3 +38,106 @@ lm_wflow <-
   add_recipe(ames_rec)
 
 lm_fit <- fit(lm_wflow, ames_train)
+
+# Regression metrics ----
+
+ames_test_res <- predict(lm_fit, new_data = ames_test |> select(-Sale_Price))
+ames_test_res
+
+ames_test_res <- bind_cols(ames_test_res, ames_test |> select(Sale_Price))
+ames_test_res
+
+ggplot(ames_test_res, aes(x = Sale_Price, y = .pred)) +
+  # Create a diagonal line
+  geom_abline(lty = 2) +
+  geom_point(alpha = 0.5) +
+  labs(y = "Predicted Sale Price (log10)", x = "Sale Price (log10)") +
+  # Scale and size the x- and y-axis uniformly:
+  coord_obs_pred()
+
+rmse(ames_test_res, truth = Sale_Price, estimate = .pred)
+
+ames_metrics <- metric_set(rmse, rsq, mae)
+ames_metrics(ames_test_res, truth = Sale_Price, estimate = .pred)
+
+# Binary classification metrics ----
+
+data("two_class_example")
+tibble(two_class_example)
+
+# Confusion matrix:
+conf_mat(two_class_example, truth = truth, estimate = predicted)
+
+# Accuracy:
+accuracy(two_class_example, truth, predicted)
+
+# Matthews correlation coefficient:
+mcc(two_class_example, truth, predicted)
+
+# F1 metric:
+f_meas(two_class_example, truth, predicted)
+
+# Combining these three classification metrics together
+classification_metrics <- metric_set(accuracy, mcc, f_meas)
+classification_metrics(two_class_example, truth = truth, estimate = predicted)
+
+f_meas(two_class_example, truth, predicted, event_level = "second")
+
+two_class_curve <- roc_curve(two_class_example, truth, Class1)
+two_class_curve
+
+roc_auc(two_class_example, truth, Class1)
+
+autoplot(two_class_curve)
+
+# Multiclass classification metrics ----
+
+data(hpc_cv)
+tibble(hpc_cv)
+
+accuracy(hpc_cv, obs, pred)
+
+mcc(hpc_cv, obs, pred)
+
+class_totals <- 
+  count(hpc_cv, obs, name = "totals") |> 
+  mutate(class_wts = totals / sum(totals))
+class_totals
+
+cell_counts <- 
+  hpc_cv |> 
+  count(obs, pred)
+
+# Compute the four sentitivities using 1-vs-all
+one_versus_all <- 
+  cell_counts |> 
+  filter(obs == pred) |> 
+  full_join(class_totals, by = "obs") |> 
+  mutate(sens = n / totals)
+one_versus_all
+
+# Three different estimates
+one_versus_all |> 
+  summarise(
+    macro = mean(sens),
+    macro_wts = weighted.mean(sens, class_wts),
+    micro = sum(n) / sum(totals)
+  )
+
+# Using yardstick:
+sensitivity(hpc_cv, obs, pred, estimator = "macro")
+sensitivity(hpc_cv, obs, pred, estimator = "macro_weighted")
+sensitivity(hpc_cv, obs, pred, estimator = "micro")
+
+roc_auc(hpc_cv, obs, VF, F, M, L)
+roc_auc(hpc_cv, obs, VF, F, M, L, estimator = "macro_weighted")
+
+hpc_cv |> 
+  group_by(Resample) |> 
+  accuracy(obs, pred)
+
+# Four 1-vs-all ROC curves for each fold
+hpc_cv |> 
+  group_by(Resample) |> 
+  roc_curve(obs, VF, F, M, L) |> 
+  autoplot()
